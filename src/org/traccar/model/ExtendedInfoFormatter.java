@@ -32,6 +32,11 @@ public class ExtendedInfoFormatter {
 
     public void set(String key, Object value) {
         if (value != null) {
+            // Exclude empty strings
+            if ((value instanceof String) && ((String) value).isEmpty()) {
+                return;
+            }
+            
             data.append("<").append(key).append(">");
             data.append(value);
             data.append("</").append(key).append(">");
@@ -40,8 +45,7 @@ public class ExtendedInfoFormatter {
 
     @Override
     public String toString() {
-        data.append("</").append(rootNode).append(">");
-        return data.toString();
+        return data.toString() + "</" + rootNode + ">";
     }
 
 }

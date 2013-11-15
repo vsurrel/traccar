@@ -36,24 +36,24 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
     static private Pattern pattern = Pattern.compile(
             "[\r\n]*" +
             "(\\d+)," +                         // Serial
-            "(\\+?\\d+)," +                     // Number
+            "(\\+?\\d+)?," +                    // Number
             "GPRMC," +
-            "(\\d{2})(\\d{2})(\\d{2})\\.(\\d{3})," + // Time (HHMMSS.SSS)
+            "(\\d{2})(\\d{2})(\\d{2})\\.(\\d+)," + // Time (HHMMSS.SSS)
             "([AV])," +                         // Validity
-            "(\\d{2})(\\d{2}\\.\\d{4})," +      // Latitude (DDMM.MMMM)
+            "(\\d{2})(\\d{2}\\.\\d+)," +        // Latitude (DDMM.MMMM)
             "([NS])," +
-            "(\\d{3})(\\d{2}\\.\\d{4})," +      // Longitude (DDDMM.MMMM)
+            "(\\d{3})(\\d{2}\\.\\d+)," +        // Longitude (DDDMM.MMMM)
             "([EW])," +
             "(\\d+\\.\\d+)," +                  // Speed
             "(\\d+\\.\\d+)?," +                 // Course
             "(\\d{2})(\\d{2})(\\d{2})," +       // Date (DDMMYY)
-            ",,.\\*..," +                       // Checksum
+            "[^,]*,[^,]*,.\\*..," +             // Checksum
             "([FL])," +                         // Signal
-            "(.*)," +                           // Alarm
+            "(?:([^,]*),)?" +                   // Alarm
             ".*imei:" +
             "(\\d+)," +                         // IMEI
             "(\\d+)," +                         // Satellites
-            "(-?\\d+\\.\\d+)," +                // Altitude
+            "(-?\\d+\\.\\d+)?," +               // Altitude
             "[FL]:(\\d+\\.\\d+)V," +            // Power
             ".*" +
             "[\r\n]*");
@@ -100,10 +100,10 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         position.setLatitude(latitude);
 
         // Longitude
-        Double lonlitude = Double.valueOf(parser.group(index++));
-        lonlitude += Double.valueOf(parser.group(index++)) / 60;
-        if (parser.group(index++).compareTo("W") == 0) lonlitude = -lonlitude;
-        position.setLongitude(lonlitude);
+        Double longitude = Double.valueOf(parser.group(index++));
+        longitude += Double.valueOf(parser.group(index++)) / 60;
+        if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
+        position.setLongitude(longitude);
 
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
@@ -141,10 +141,15 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         extendedInfo.set("satellites", parser.group(index++).replaceFirst ("^0*(?![\\.$])", ""));
 
         // Altitude
-        position.setAltitude(Double.valueOf(parser.group(index++)));
+        String altitude = parser.group(index++);
+        if (altitude != null) {
+            position.setAltitude(Double.valueOf(altitude));
+        } else {
+            position.setAltitude(0.0);
+        }
 
         // Power
-        position.setPower(Double.valueOf(parser.group(index++)));
+        extendedInfo.set("power", Double.valueOf(parser.group(index++)));
 
         // Extended info
         position.setExtendedInfo(extendedInfo.toString());

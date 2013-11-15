@@ -33,25 +33,23 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         super(serverManager);
     }
 
-    /**
-     * Regular expressions pattern
-     */
     static private Pattern pattern = Pattern.compile(
             "imei:" +
             "(\\d+)," +                         // IMEI
             "([^,]+)," +                        // Alarm
             "(\\d{2})/?(\\d{2})/?(\\d{2})\\s?" + // Local Date
-            "(\\d{2}):?(\\d{2})," +             // Local Time
+            "(\\d{2}):?(\\d{2})(?:\\d{2})?," +  // Local Time
             "[^,]*," +
             "[FL]," +                           // F - full / L - low
             "(\\d{2})(\\d{2})(\\d{2})\\.(\\d{3})," + // Time UTC (HHMMSS.SSS)
             "([AV])," +                         // Validity
-            "(\\d{2})(\\d{2}\\.\\d{4})," +      // Latitude (DDMM.MMMM)
+            "(\\d+)(\\d{2}\\.\\d+)," +          // Latitude (DDMM.MMMM)
             "([NS])," +
-            "(\\d{3})(\\d{2}\\.\\d{4})," +      // Longitude (DDDMM.MMMM)
+            "(\\d+)(\\d{2}\\.\\d+)," +          // Longitude (DDDMM.MMMM)
             "([EW])?," +
             "(\\d+\\.?\\d*)," +                 // Speed
-            "(\\d+\\.\\d+)?" +                  // Course
+            "(\\d+\\.?\\d*)?(?:," +             // Course
+            "(\\d+\\.?\\d*)?)?" +               // Altitude
             ".*");
 
     @Override
@@ -82,7 +80,6 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         // Parse message
         Matcher parser = pattern.matcher(sentence);
         if (!parser.matches()) {
-            Log.info("Parsing error");
             return null;
         }
 
@@ -143,16 +140,13 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         position.setLatitude(latitude);
 
         // Longitude
-        Double lonlitude = Double.valueOf(parser.group(index++));
-        lonlitude += Double.valueOf(parser.group(index++)) / 60;
+        Double longitude = Double.valueOf(parser.group(index++));
+        longitude += Double.valueOf(parser.group(index++)) / 60;
         String hemisphere = parser.group(index++);
         if (hemisphere != null) {
-            if (hemisphere.compareTo("W") == 0) lonlitude = -lonlitude;
+            if (hemisphere.compareTo("W") == 0) longitude = -longitude;
         }
-        position.setLongitude(lonlitude);
-
-        // Altitude
-        position.setAltitude(0.0);
+        position.setLongitude(longitude);
 
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
@@ -163,6 +157,14 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
             position.setCourse(Double.valueOf(course));
         } else {
             position.setCourse(0.0);
+        }
+
+        // Altitude
+        String altitude = parser.group(index++);
+        if (altitude != null) {
+            position.setAltitude(Double.valueOf(altitude));
+        } else {
+            position.setAltitude(0.0);
         }
 
         // Extended info

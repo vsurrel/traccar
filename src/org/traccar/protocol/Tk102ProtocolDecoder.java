@@ -36,16 +36,16 @@ public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
     }
 
     static private Pattern pattern = Pattern.compile(
-            "\\[\\=\\d{10}.\\(.{3}" +
+            "\\[.\\d{10}.\\(\\p{Upper}+" +
             "(\\d{2})(\\d{2})(\\d{2})" +   // Time (HHMMSS)
             "([AV])" +                     // Validity
             "(\\d{2})(\\d{2}\\.\\d{4})" +  // Latitude (DDMM.MMMM)
             "([NS])" +
             "(\\d{3})(\\d{2}\\.\\d{4})" +  // Longitude (DDDMM.MMMM)
             "([EW])" +
-            "(\\d{3}\\.\\d{3})" +           // Speed
+            "(\\d{3}\\.\\d{3})" +          // Speed
             "(\\d{2})(\\d{2})(\\d{2})" +   // Date (DDMMYY)
-            ".+");
+            "\\d+\\)");
 
     @Override
     protected Object decode(
@@ -54,18 +54,28 @@ public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
 
         String sentence = (String) msg;
 
-        // Detect device identifier
+        // Login
         if (sentence.startsWith("[!")) {
             String imei = sentence.substring(14, 14 + 15);
             try {
                 deviceId = getDataManager().getDeviceByImei(imei).getId();
             } catch(Exception error) {
                 Log.warning("Unknown device - " + imei);
+                return null;
+            }
+
+            if (channel != null) {
+                channel.write("[”0000000001" + sentence.substring(13) + "]");
             }
         }
 
+        // Quit
+        else if (sentence.startsWith("[#")) {
+            // TODO: Send response
+        }
+
         // Parse message
-        else if (sentence.startsWith("[=") && deviceId != null) {
+        else if (deviceId != null) {
 
             // Parse message
             Matcher parser = pattern.matcher(sentence);
@@ -97,10 +107,10 @@ public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
             position.setLatitude(latitude);
 
             // Longitude
-            Double lonlitude = Double.valueOf(parser.group(index++));
-            lonlitude += Double.valueOf(parser.group(index++)) / 60;
-            if (parser.group(index++).compareTo("W") == 0) lonlitude = -lonlitude;
-            position.setLongitude(lonlitude);
+            Double longitude = Double.valueOf(parser.group(index++));
+            longitude += Double.valueOf(parser.group(index++)) / 60;
+            if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
+            position.setLongitude(longitude);
 
             // Speed
             position.setSpeed(Double.valueOf(parser.group(index++)));

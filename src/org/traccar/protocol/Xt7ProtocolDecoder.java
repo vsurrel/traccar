@@ -35,7 +35,7 @@ public class Xt7ProtocolDecoder extends BaseProtocolDecoder {
         super(serverManager);
     }
 
-    static private Pattern pattern = Pattern.compile(
+    private static final Pattern pattern = Pattern.compile(
             "\\$GPRMC," +
             "(\\d{2})(\\d{2})(\\d{2})\\.(\\d+)," + // Time (HHMMSS.SSS)
             "([AV])," +                         // Validity
@@ -99,7 +99,7 @@ public class Xt7ProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.MILLISECOND, Integer.valueOf(parser.group(index++)));
 
         // Validity
-        position.setValid(parser.group(index++).compareTo("A") == 0 ? true : false);
+        position.setValid(parser.group(index++).compareTo("A") == 0);
 
         // Latitude
         Double latitude = Double.valueOf(parser.group(index++));
@@ -108,10 +108,10 @@ public class Xt7ProtocolDecoder extends BaseProtocolDecoder {
         position.setLatitude(latitude);
 
         // Longitude
-        Double lonlitude = Double.valueOf(parser.group(index++));
-        lonlitude += Double.valueOf(parser.group(index++)) / 60;
-        if (parser.group(index++).compareTo("W") == 0) lonlitude = -lonlitude;
-        position.setLongitude(lonlitude);
+        Double longitude = Double.valueOf(parser.group(index++));
+        longitude += Double.valueOf(parser.group(index++)) / 60;
+        if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
+        position.setLongitude(longitude);
 
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
@@ -123,6 +123,9 @@ public class Xt7ProtocolDecoder extends BaseProtocolDecoder {
         } else {
             position.setCourse(0.0);
         }
+        
+        // Altitude
+        position.setAltitude(0.0);
 
         // Date
         time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
@@ -140,7 +143,7 @@ public class Xt7ProtocolDecoder extends BaseProtocolDecoder {
         extendedInfo.set("gsm", parser.group(index++));
         
         // Battery
-        position.setPower(Double.valueOf(parser.group(index++)));
+        extendedInfo.set("power", Double.valueOf(parser.group(index++)));
         
         // Flags
         extendedInfo.set("flags", parser.group(index++));

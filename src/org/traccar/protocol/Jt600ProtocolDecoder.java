@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2013 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,26 +27,19 @@ import org.traccar.BaseProtocolDecoder;
 import org.traccar.ServerManager;
 import org.traccar.helper.ChannelBufferTools;
 import org.traccar.helper.Log;
+import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
-/**
- * JT600 protocol decoder
- */
 public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
 
-    /**
-     * Initialize
-     */
     public Jt600ProtocolDecoder(ServerManager serverManager) {
         super(serverManager);
     }
 
-    /**
-     * Decode regular message
-     */
     private Position decodeNormalMessage(ChannelBuffer buf) throws Exception {
 
         Position position = new Position();
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("jt600");
 
         buf.readByte(); // header
 
@@ -56,10 +49,12 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
             position.setDeviceId(getDataManager().getDeviceByImei(id).getId());
         } catch(Exception error) {
             Log.warning("Unknown device - " + id);
-            return null;
+            //return null;
         }
 
-        buf.readByte(); // protocol version + data type
+        // Protocol and type
+        int version = ChannelBufferTools.readHexInteger(buf, 1);
+        int type = buf.readUnsignedByte() & 0xf;
 
         buf.readBytes(2); // length
 
@@ -93,39 +88,46 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         position.setLongitude(longitude);
 
         // Speed
-        double speed = ChannelBufferTools.readHexInteger(buf, 2);
-        position.setSpeed(speed);
+        position.setSpeed((double) ChannelBufferTools.readHexInteger(buf, 2));
 
         // Course
-        double course = buf.readUnsignedByte() * 2;
-        position.setCourse(course);
+        position.setCourse(buf.readUnsignedByte() * 2.0);
+        
+        if (version == 1) {
+            
+            extendedInfo.set("satellites", buf.readUnsignedByte());
 
-        buf.readByte(); // number of satellites
+            // Power
+            extendedInfo.set("power", buf.readUnsignedByte());
 
-        // Course
-        double power = buf.readUnsignedByte();
-        position.setPower(power);
+            buf.readByte(); // other flags and sensors
 
-        buf.readByte(); // other flags and sensors
+            // Altitude
+            position.setAltitude((double) buf.readUnsignedShort());
 
-        // Altitude
-        double altitude = buf.readUnsignedShort();
-        position.setAltitude(altitude);
+            extendedInfo.set("cell", buf.readUnsignedShort());
+            extendedInfo.set("lac", buf.readUnsignedShort());
+            extendedInfo.set("gsm", buf.readUnsignedByte());
 
-        buf.readUnsignedShort(); // cell id
-        buf.readUnsignedShort(); // lac
+        } else if (version == 2) {
 
-        buf.readUnsignedByte(); // gsm signal
+            position.setAltitude(0.0);
 
-        buf.readUnsignedByte(); // message number
+            int fuel = buf.readUnsignedByte() << 8;
 
+            extendedInfo.set("status", buf.readUnsignedInt());
+            extendedInfo.set("milage", buf.readUnsignedInt());
+
+            fuel += buf.readUnsignedByte();
+            extendedInfo.set("fuel", fuel);
+
+        }
+        
+        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 
-    /**
-     * Alert message pattern
-     */
-    static private Pattern pattern = Pattern.compile(
+    private static final Pattern pattern = Pattern.compile(
             "\\(" +
             "([\\d]+)," +                // Id
             "W01," +                     // Type
@@ -144,9 +146,6 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
             "(\\d+)," +                  // Alert Type
             ".*\\)");
 
-    /**
-     * Decode alert message
-     */
     private Position decodeAlertMessage(ChannelBuffer buf) throws Exception {
 
         String message = buf.toString(Charset.defaultCharset());
@@ -159,6 +158,8 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
 
         // Create new position
         Position position = new Position();
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter("jt600");
+        extendedInfo.set("alert", "true");
         Integer index = 1;
 
         // Get device by identifier
@@ -171,10 +172,10 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         }
 
         // Longitude
-        Double lonlitude = Double.valueOf(parser.group(index++));
-        lonlitude += Double.valueOf(parser.group(index++)) / 60;
-        if (parser.group(index++).compareTo("W") == 0) lonlitude = -lonlitude;
-        position.setLongitude(lonlitude);
+        Double longitude = Double.valueOf(parser.group(index++));
+        longitude += Double.valueOf(parser.group(index++)) / 60;
+        if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
+        position.setLongitude(longitude);
 
         // Latitude
         Double latitude = Double.valueOf(parser.group(index++));
@@ -183,7 +184,7 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         position.setLatitude(latitude);
 
         // Validity
-        position.setValid(parser.group(index++).compareTo("A") == 0 ? true : false);
+        position.setValid(parser.group(index++).compareTo("A") == 0);
 
         // Time
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -201,16 +202,18 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
 
         // Course
         position.setCourse(Double.valueOf(parser.group(index++)));
+        
+        // Altitude
+        position.setAltitude(0.0);
 
         // Power
-        position.setPower(Double.valueOf(parser.group(index++)));
+        extendedInfo.set("power", Double.valueOf(parser.group(index++)));
 
+        position.setExtendedInfo(extendedInfo.toString());
         return position;
     }
 
-    /**
-     * Decode message
-     */
+    @Override
     protected Object decode(
             ChannelHandlerContext ctx, Channel channel, Object msg)
             throws Exception {

@@ -114,12 +114,12 @@ public class Tr20ProtocolDecoder extends BaseProtocolDecoder {
             // Longitude
             hemisphere = 1;
             if (parser.group(index++).compareTo("W") == 0) hemisphere = -1;
-            Double lonlitude = Double.valueOf(parser.group(index++));
-            lonlitude += Double.valueOf(parser.group(index++)) / 60;
-            position.setLongitude(lonlitude * hemisphere);
+            Double longitude = Double.valueOf(parser.group(index++));
+            longitude += Double.valueOf(parser.group(index++)) / 60;
+            position.setLongitude(longitude * hemisphere);
 
             // Speed
-            position.setSpeed(Double.valueOf(parser.group(index++)));
+            position.setSpeed(Double.valueOf(parser.group(index++)) * 0.539957);
 
             // Course
             position.setCourse(Double.valueOf(parser.group(index++)));

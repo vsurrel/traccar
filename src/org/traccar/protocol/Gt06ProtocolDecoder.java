@@ -134,7 +134,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
             double longitude = buf.readUnsignedInt() / (60.0 * 30000.0);
 
             // Speed
-            position.setSpeed((double) buf.readUnsignedByte());
+            position.setSpeed(buf.readUnsignedByte() * 0.539957);
 
             // Course and flags
             int union = buf.readUnsignedShort();
@@ -169,7 +169,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
                     extendedInfo.set("alarm", true);
 
                     // Voltage
-                    position.setPower((double) buf.readUnsignedByte());
+                    extendedInfo.set("power", buf.readUnsignedByte());
 
                     // GSM signal
                     extendedInfo.set("gsm", buf.readUnsignedByte());
@@ -181,7 +181,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
                 buf.skipBytes(buf.readableBytes() - 6);
             }
             int index = buf.readUnsignedShort();
-            position.setId((long) index);
+            extendedInfo.set("index", index);
             sendResponse(channel, type, index);
 
             position.setExtendedInfo(extendedInfo.toString());

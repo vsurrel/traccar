@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Anton Tananaev (anton.tananaev@gmail.com)
+ * Copyright 2012 - 2013 Anton Tananaev (anton.tananaev@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,31 @@
  */
 package org.traccar.model;
 
+import java.io.File;
+import java.io.StringReader;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.sql.*;
 import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.xml.namespace.QName;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
 import org.traccar.helper.AdvancedConnection;
+import org.traccar.helper.DriverDelegate;
+import org.traccar.helper.Log;
 import org.traccar.helper.NamedParameterStatement;
+import org.xml.sax.InputSource;
 
 /**
  * Database abstraction class
  */
 public class DatabaseDataManager implements DataManager {
 
-    public DatabaseDataManager(Properties properties)
-            throws ClassNotFoundException, SQLException {
+    public DatabaseDataManager(Properties properties) throws Exception {
         initDatabase(properties);
     }
 
@@ -40,13 +53,21 @@ public class DatabaseDataManager implements DataManager {
     /**
      * Initialize database
      */
-    private void initDatabase(Properties properties)
-            throws ClassNotFoundException, SQLException {
+    private void initDatabase(Properties properties) throws Exception {
 
         // Load driver
         String driver = properties.getProperty("database.driver");
         if (driver != null) {
-            Class.forName(driver);
+            String driverFile = properties.getProperty("database.driverFile");
+
+            if (driverFile != null) {
+                URL url = new URL("jar:file:" + new File(driverFile).getAbsolutePath() + "!/");
+                URLClassLoader cl = new URLClassLoader(new URL[] { url });
+                Driver d = (Driver) Class.forName(driver, true, cl).newInstance();
+                DriverManager.registerDriver(new DriverDelegate(d));
+            } else {
+                Class.forName(driver);
+            }
         }
 
         // Refresh delay
@@ -129,7 +150,6 @@ public class DatabaseDataManager implements DataManager {
         if (queryAddPosition != null) {
             queryAddPosition.prepare(Statement.RETURN_GENERATED_KEYS);
 
-            queryAddPosition.setLong("id", position.getId());
             queryAddPosition.setLong("device_id", position.getDeviceId());
             queryAddPosition.setTimestamp("time", position.getTime());
             queryAddPosition.setBoolean("valid", position.getValid());
@@ -138,9 +158,31 @@ public class DatabaseDataManager implements DataManager {
             queryAddPosition.setDouble("longitude", position.getLongitude());
             queryAddPosition.setDouble("speed", position.getSpeed());
             queryAddPosition.setDouble("course", position.getCourse());
-            queryAddPosition.setDouble("power", position.getPower());
             queryAddPosition.setString("address", position.getAddress());
             queryAddPosition.setString("extended_info", position.getExtendedInfo());
+            
+            // DELME: Temporary compatibility support
+            XPath xpath = XPathFactory.newInstance().newXPath();
+            try {
+                InputSource source = new InputSource(new StringReader(position.getExtendedInfo()));
+                String index = xpath.evaluate("/info/index", source);
+                if (!index.isEmpty()) {
+                    queryAddPosition.setLong("id", Long.valueOf(index));
+                } else {
+                    queryAddPosition.setLong("id", null);
+                }
+                source = new InputSource(new StringReader(position.getExtendedInfo()));
+                String power = xpath.evaluate("/info/power", source);
+                if (!power.isEmpty()) {
+                    queryAddPosition.setDouble("power", Double.valueOf(power));
+                } else {
+                    queryAddPosition.setLong("power", null);
+                }
+            } catch (XPathExpressionException e) {
+                Log.warning("Error in XML: " + position.getExtendedInfo(), e);
+                queryAddPosition.setLong("id", null);
+                queryAddPosition.setLong("power", null);
+            }
 
             queryAddPosition.executeUpdate();
 

@@ -19,21 +19,15 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.ByteOrder;
 import java.sql.SQLException;
-import java.text.DateFormat;
-import java.text.FieldPosition;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
-import java.util.logging.FileHandler;
-import java.util.logging.Formatter;
-import java.util.logging.LogRecord;
 import org.jboss.netty.bootstrap.ConnectionlessBootstrap;
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.handler.codec.frame.DelimiterBasedFrameDecoder;
+import org.jboss.netty.handler.codec.frame.FixedLengthFrameDecoder;
 import org.jboss.netty.handler.codec.frame.LengthFieldBasedFrameDecoder;
 import org.jboss.netty.handler.codec.frame.LineBasedFrameDecoder;
 import org.jboss.netty.handler.codec.http.HttpRequestDecoder;
@@ -89,11 +83,7 @@ public class ServerManager {
         return  properties;
     }
 
-    /**
-     * Initialize
-     */
-    public void init(String[] arguments)
-            throws IOException, ClassNotFoundException, SQLException {
+    public void init(String[] arguments) throws Exception {
 
         // Load properties
         properties = new Properties();
@@ -101,9 +91,14 @@ public class ServerManager {
             properties.loadFromXML(new FileInputStream(arguments[0]));
         }
 
+        // Init logger
+        loggerEnabled = Boolean.valueOf(properties.getProperty("logger.enable"));
+        if (loggerEnabled) {
+            Log.setupLogger(properties);
+        }
+
         dataManager = new DatabaseDataManager(properties);
 
-        initLogger(properties);
         initGeocoder(properties);
 
         initXexunServer("xexun");
@@ -113,11 +108,11 @@ public class ServerManager {
         initGl200Server("gl200");
         initT55Server("t55");
         initXexun2Server("xexun2");
-        initAvl08Server("avl08");
+        initTotemServer("totem");
         initEnforaServer("enfora");
         initMeiligaoServer("meiligao");
         initMaxonServer("maxon");
-        initST210Server("st210");
+        initSuntechServer("suntech");
         initProgressServer("progress");
         initH02Server("h02");
         initJt600Server("jt600");
@@ -148,16 +143,28 @@ public class ServerManager {
         initWialonServer("wialon");
         initCarscopServer("carscop");
         initApelServer("apel");
-
+        initManPowerServer("manpower");
+        initGlobalSatServer("globalsat");
+        initAtrackServer("atrack");
+        initPt3000Server("pt3000");
+        initRuptelaServer("ruptela");
+        initTopflytechServer("topflytech");
+        initLaipacServer("laipac");
+        initAplicomServer("aplicom");
+        initGotopServer("gotop");
+        initSanavServer("sanav");
+        initGatorServer("gator");
+        initNoranServer("noran");
+        initM2mServer("m2m");
+        initOsmAndServer("osmand");
+        initEasyTrackServer("easytrack");
+        
         // Initialize web server
         if (Boolean.valueOf(properties.getProperty("http.enable"))) {
             webServer = new WebServer(properties);
         }
     }
 
-    /**
-     * Start
-     */
     public void start() {
         if (webServer != null) {
             webServer.start();
@@ -167,9 +174,6 @@ public class ServerManager {
         }
     }
 
-    /**
-     * Stop
-     */
     public void stop() {
         for (Object server: serverList) {
             ((TrackerServer) server).stop();
@@ -184,55 +188,8 @@ public class ServerManager {
         }
     }
 
-    /**
-     * Destroy
-     */
     public void destroy() {
         serverList.clear();
-    }
-
-    /**
-     * Initialize logger
-     */
-    private void initLogger(Properties properties) throws IOException {
-
-        loggerEnabled = Boolean.valueOf(properties.getProperty("logger.enable"));
-
-        if (loggerEnabled) {
-
-            String fileName = properties.getProperty("logger.file");
-            if (fileName != null) {
-
-                FileHandler file = new FileHandler(fileName, true);
-
-                // Simple formatter
-                file.setFormatter(new Formatter() {
-                    private final String LINE_SEPARATOR =
-                            System.getProperty("line.separator", "\n");
-
-                    private final DateFormat dateFormat =
-                            new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-
-                    @Override
-                    public String format(LogRecord record) {
-                        StringBuffer line = new StringBuffer();
-                        dateFormat.format(new Date(record.getMillis()), line, new FieldPosition(0));
-                        line.append(" ");
-                        line.append(record.getSourceClassName());
-                        line.append(".");
-                        line.append(record.getSourceMethodName());
-                        line.append(" ");
-                        line.append(record.getLevel().getName());
-                        line.append(": ");
-                        line.append(formatMessage(record));
-                        line.append(LINE_SEPARATOR);
-                        return line.toString();
-                    }
-                });
-
-                Log.getLogger().addHandler(file);
-            }
-        }
     }
 
     private void initGeocoder(Properties properties) throws IOException {
@@ -276,9 +233,13 @@ public class ServerManager {
                 serverList.add(new TrackerServer(this, new ConnectionlessBootstrap(), protocol) {
                     @Override
                     protected void addSpecificHandlers(ChannelPipeline pipeline) {
-                        byte delimiter[] = { (byte) ';' };
-                        pipeline.addLast("frameDecoder",
-                                new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                        byte delimiter1[] = { (byte) '\r', (byte) '\n' };
+                        byte delimiter2[] = { (byte) '\n' };
+                        byte delimiter3[] = { (byte) ';' };
+                        pipeline.addLast("frameDecoder", new DelimiterBasedFrameDecoder(1024,
+                            ChannelBuffers.wrappedBuffer(delimiter1),
+                            ChannelBuffers.wrappedBuffer(delimiter2),
+                            ChannelBuffers.wrappedBuffer(delimiter3)));
                         pipeline.addLast("stringDecoder", new StringDecoder());
                         pipeline.addLast("stringEncoder", new StringEncoder());
                         pipeline.addLast("objectDecoder", new Gps103ProtocolDecoder(ServerManager.this));
@@ -288,9 +249,13 @@ public class ServerManager {
                 serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
                     @Override
                     protected void addSpecificHandlers(ChannelPipeline pipeline) {
-                        byte delimiter[] = { (byte) ';' };
-                        pipeline.addLast("frameDecoder",
-                                new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                        byte delimiter1[] = { (byte) '\r', (byte) '\n' };
+                        byte delimiter2[] = { (byte) '\n' };
+                        byte delimiter3[] = { (byte) ';' };
+                        pipeline.addLast("frameDecoder", new DelimiterBasedFrameDecoder(1024,
+                            ChannelBuffers.wrappedBuffer(delimiter1),
+                            ChannelBuffers.wrappedBuffer(delimiter2),
+                            ChannelBuffers.wrappedBuffer(delimiter3)));
                         pipeline.addLast("stringDecoder", new StringDecoder());
                         pipeline.addLast("stringEncoder", new StringEncoder());
                         pipeline.addLast("objectDecoder", new Gps103ProtocolDecoder(ServerManager.this));
@@ -335,7 +300,7 @@ public class ServerManager {
             serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
                 @Override
                 protected void addSpecificHandlers(ChannelPipeline pipeline) {
-                    byte delimiter[] = { (byte) 0x0 };
+                    byte delimiter[] = { (byte) '\0' };
                     pipeline.addLast("frameDecoder",
                             new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
                     pipeline.addLast("stringDecoder", new StringDecoder());
@@ -351,9 +316,12 @@ public class ServerManager {
             serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
                 @Override
                 protected void addSpecificHandlers(ChannelPipeline pipeline) {
-                    byte delimiter[] = { (byte) '$' };
+                    byte delimiter1[] = { (byte) '$' };
+                    byte delimiter2[] = { (byte) '\0' };
                     pipeline.addLast("frameDecoder",
-                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                            new DelimiterBasedFrameDecoder(1024,
+                                    ChannelBuffers.wrappedBuffer(delimiter1),
+                                    ChannelBuffers.wrappedBuffer(delimiter2)));
                     pipeline.addLast("stringDecoder", new StringDecoder());
                     pipeline.addLast("stringEncoder", new StringEncoder());
                     pipeline.addLast("objectDecoder", new Gl200ProtocolDecoder(ServerManager.this));
@@ -393,16 +361,14 @@ public class ServerManager {
         }
     }
 
-    private void initAvl08Server(String protocol) throws SQLException {
+    private void initTotemServer(String protocol) throws SQLException {
         if (isProtocolEnabled(properties, protocol)) {
             serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
                 @Override
                 protected void addSpecificHandlers(ChannelPipeline pipeline) {
-                    byte delimiter[] = { (byte) '\r', (byte) '\n' };
-                    pipeline.addLast("frameDecoder",
-                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                    pipeline.addLast("frameDecoder", new TotemFrameDecoder());
                     pipeline.addLast("stringDecoder", new StringDecoder());
-                    pipeline.addLast("objectDecoder", new Avl08ProtocolDecoder(ServerManager.this));
+                    pipeline.addLast("objectDecoder", new TotemProtocolDecoder(ServerManager.this));
                 }
             });
         }
@@ -448,7 +414,7 @@ public class ServerManager {
         }
     }
 
-    private void initST210Server(String protocol) throws SQLException {
+    private void initSuntechServer(String protocol) throws SQLException {
         if (isProtocolEnabled(properties, protocol)) {
             serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
                 @Override
@@ -457,7 +423,7 @@ public class ServerManager {
                     pipeline.addLast("frameDecoder",
                             new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
                     pipeline.addLast("stringDecoder", new StringDecoder());
-                    pipeline.addLast("objectDecoder", new St210ProtocolDecoder(ServerManager.this));
+                    pipeline.addLast("objectDecoder", new SuntechProtocolDecoder(ServerManager.this));
                 }
             });
         }
@@ -482,10 +448,7 @@ public class ServerManager {
             serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
                 @Override
                 protected void addSpecificHandlers(ChannelPipeline pipeline) {
-                    byte delimiter[] = { (byte) '#' };
-                    pipeline.addLast("frameDecoder",
-                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
-                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("frameDecoder", new H02FrameDecoder());
                     pipeline.addLast("objectDecoder", new H02ProtocolDecoder(ServerManager.this));
                 }
             });
@@ -524,7 +487,7 @@ public class ServerManager {
             serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
                 @Override
                 protected void addSpecificHandlers(ChannelPipeline pipeline) {
-                    byte delimiter[] = { (byte) '#', (byte) '#', (byte) '#' };
+                    byte delimiter[] = { (byte) '#', (byte) '#' };
                     pipeline.addLast("frameDecoder",
                             new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
                     pipeline.addLast("stringDecoder", new StringDecoder());
@@ -752,11 +715,8 @@ public class ServerManager {
             serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
                 @Override
                 protected void addSpecificHandlers(ChannelPipeline pipeline) {
-                    byte delimiter[] = { (byte) '\r', (byte) '\n' };
-                    pipeline.addLast("frameDecoder",
-                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                    pipeline.addLast("frameDecoder", new WondexFrameDecoder());
                     pipeline.addLast("stringDecoder", new StringDecoder());
-                    pipeline.addLast("stringEncoder", new StringEncoder());
                     pipeline.addLast("objectDecoder", new WondexProtocolDecoder(ServerManager.this));
                 }
             });
@@ -848,7 +808,7 @@ public class ServerManager {
             });
         }
     }
-    
+
     private void initWialonServer(String protocol) throws SQLException {
         if (isProtocolEnabled(properties, protocol)) {
             serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
@@ -890,6 +850,211 @@ public class ServerManager {
             };
             server.setEndianness(ByteOrder.LITTLE_ENDIAN);
             serverList.add(server);
+        }
+    }
+
+    private void initManPowerServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    byte delimiter[] = { (byte) ';' };
+                    pipeline.addLast("frameDecoder",
+                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("stringEncoder", new StringEncoder());
+                    pipeline.addLast("objectDecoder", new ManPowerProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initGlobalSatServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    byte delimiter[] = { (byte) '!' };
+                    pipeline.addLast("frameDecoder",
+                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("stringEncoder", new StringEncoder());
+                    pipeline.addLast("objectDecoder", new GlobalSatProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initAtrackServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("frameDecoder", new AtrackFrameDecoder());
+                    pipeline.addLast("objectDecoder", new AtrackProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initPt3000Server(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    byte delimiter[] = { (byte) 'd' }; // probably wrong
+                    pipeline.addLast("frameDecoder",
+                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("stringEncoder", new StringEncoder());
+                    pipeline.addLast("objectDecoder", new Pt3000ProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initRuptelaServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("frameDecoder", new LengthFieldBasedFrameDecoder(1024, 0, 2, 2, 0));
+                    pipeline.addLast("objectDecoder", new RuptelaProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initTopflytechServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    byte delimiter[] = { (byte) ')' };
+                    pipeline.addLast("frameDecoder",
+                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("objectDecoder", new TopflytechProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initLaipacServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("frameDecoder", new LineBasedFrameDecoder(1024));
+                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("stringEncoder", new StringEncoder());
+                    pipeline.addLast("objectDecoder", new LaipacProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initAplicomServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("frameDecoder", new AplicomFrameDecoder());
+                    pipeline.addLast("objectDecoder", new AplicomProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initGotopServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    byte delimiter[] = { (byte) '#' };
+                    pipeline.addLast("frameDecoder",
+                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("objectDecoder", new GotopProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initSanavServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    byte delimiter[] = { (byte) '*' };
+                    pipeline.addLast("frameDecoder",
+                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("objectDecoder", new SanavProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initGatorServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ConnectionlessBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("objectDecoder", new GatorProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initNoranServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ConnectionlessBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("objectDecoder", new NoranProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initM2mServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("frameDecoder", new FixedLengthFrameDecoder(23));
+                    pipeline.addLast("objectDecoder", new M2mProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+    
+    private void initOsmAndServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("httpDecoder", new HttpRequestDecoder());
+                    pipeline.addLast("httpEncoder", new HttpResponseEncoder());
+                    pipeline.addLast("objectDecoder", new OsmAndProtocolDecoder(ServerManager.this));
+                }
+            });
+        }
+    }
+
+    private void initEasyTrackServer(String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    byte delimiter[] = { (byte) '#' };
+                    pipeline.addLast("frameDecoder",
+                            new DelimiterBasedFrameDecoder(1024, ChannelBuffers.wrappedBuffer(delimiter)));
+                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("objectDecoder", new EasyTrackProtocolDecoder(ServerManager.this));
+                }
+            });
         }
     }
 

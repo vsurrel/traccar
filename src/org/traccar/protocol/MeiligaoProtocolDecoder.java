@@ -38,12 +38,12 @@ public class MeiligaoProtocolDecoder extends BaseProtocolDecoder {
         super(serverManager);
     }
 
-    static private Pattern pattern = Pattern.compile(
-            "(\\d{2})(\\d{2})(\\d{2})\\.(\\d+)," + // Time (HHMMSS.SSS)
+    private static final Pattern pattern = Pattern.compile(
+            "(\\d{2})(\\d{2})(\\d{2})\\.?(\\d+)?," + // Time (HHMMSS.SSS)
             "([AV])," +                         // Validity
-            "(\\d{2})(\\d{2}\\.\\d+)," +        // Latitude (DDMM.MMMM)
+            "(\\d+)(\\d{2}\\.\\d+)," +          // Latitude (DDMM.MMMM)
             "([NS])," +
-            "(\\d{3})(\\d{2}\\.\\d+)," +        // Longitude (DDDMM.MMMM)
+            "(\\d+)(\\d{2}\\.\\d+)," +          // Longitude (DDDMM.MMMM)
             "([EW])," +
             "(\\d+.\\d+)," +                    // Speed
             "(\\d+\\.?\\d*)?," +                // Course
@@ -158,7 +158,10 @@ public class MeiligaoProtocolDecoder extends BaseProtocolDecoder {
         time.set(Calendar.HOUR, Integer.valueOf(parser.group(index++)));
         time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
         time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
-        time.set(Calendar.MILLISECOND, Integer.valueOf(parser.group(index++)));
+        String mseconds = parser.group(index++);
+        if (mseconds != null) {
+            time.set(Calendar.MILLISECOND, Integer.valueOf(mseconds));
+        }
 
         // Validity
         position.setValid(parser.group(index++).compareTo("A") == 0 ? true : false);
@@ -170,10 +173,10 @@ public class MeiligaoProtocolDecoder extends BaseProtocolDecoder {
         position.setLatitude(latitude);
 
         // Longitude
-        Double lonlitude = Double.valueOf(parser.group(index++));
-        lonlitude += Double.valueOf(parser.group(index++)) / 60;
-        if (parser.group(index++).compareTo("W") == 0) lonlitude = -lonlitude;
-        position.setLongitude(lonlitude);
+        Double longitude = Double.valueOf(parser.group(index++));
+        longitude += Double.valueOf(parser.group(index++)) / 60;
+        if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
+        position.setLongitude(longitude);
 
         // Speed
         position.setSpeed(Double.valueOf(parser.group(index++)));
